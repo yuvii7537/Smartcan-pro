@@ -1,0 +1,371 @@
+Project Title :
+SmartCAN Pro — Intelligent CAN Bus Debugging & Automated Reporting System
+
+About
+SmartCAN Pro is a real-time, browser-based industrial CAN bus monitoring and debugging platform. It connects directly to Arduino ECUs via USB serial port, displays live vehicle sensor data on animated gauges, and automatically generates professional PDF test reports — all inside a single HTML file with zero installation required.
+Built for Avinyathon 2025 as a low-cost alternative to expensive proprietary CAN analysis tools like CANalyzer and PEAK PCAN.
+
+Live Demo
+🔗 smartcan-pro.vercel.app
+" Open in Google Chrome or Microsoft Edge only
+Use Simulation Mode to try without Arduino hardware "
+
+Features
+🔌 Direct Arduino Connection via Web Serial API (USB)
+📊 Live Gauges — RPM, Speed, Temperature, Fuel, Battery
+📡 CAN Monitor Terminal — Color-coded TX / RX / Error log
+📈 Real-time Charts — Message flow and success rate
+🧪 Test Execution — In-Process and Final test modes
+📄 PDF Report — Auto-generated professional test report
+📋 CSV Export — Data table export for Excel
+🎮 Simulation Mode — Works without hardware
+⚙️ Settings Panel — Configurable performance options
+❓ Help Centre — Built-in guide and troubleshooting
+🌓 Dark / Light Theme — Toggle anytime
+⚡ Zero Lag — Batched DOM updates, 60fps smooth
+
+Hardware Required :
+Component	              Quantity
+Arduino Uno or Nano	       2
+MCP2515 CAN Module	       2
+USB Cable	                 2
+Jumper Wires	          Several
+
+How to Use :
+            Simulation Mode :
+1. Open website in Chrome or Edge
+2. Click Connect  (Simulation is default)
+3. Click In-Process Test or Final Test
+4. Watch live data update in real time
+5. Click PDF to download test report
+            Hardware Mode :
+1. Upload ECU1 sketch to first Arduino
+2. Upload ECU2 sketch to second Arduino
+3. Close Arduino Serial Monitor if open
+4. Select Hardware mode in website
+5. Click Select Port → choose Arduino COM port
+6. Set baud rate to 115200
+7. Click Connect
+8. Run test and monitor live CAN data
+
+Tech Stack :
+Frontend     →  HTML5, CSS3, Vanilla JavaScript (ES6+)
+Serial       →  Web Serial API (Chrome/Edge 89+)
+Charts       →  Chart.js v4
+PDF          →  jsPDF + AutoTable
+Icons        →  Remixicon
+Fonts        →  Inter + JetBrains Mono (Google Fonts)
+Single index.html file. No npm. No build step. No installation.
+
+Browser Support :
+Browser	    Hardware	  Simulation
+Chrome 89+	  ✅	         ✅
+Edge 89+	    ✅	         ✅
+Firefox	      ❌	         ✅
+Safari	      ❌	         ✅
+" Web Serial API is required for Arduino connection. 
+Only Chrome and Edge support it. "
+
+Performance :
+Your Arduino sends ~50 serial lines per second.
+SmartCAN Pro handles this with zero lag using a batched update engine:
+
+Per message  →  Update JS variables + SVG gauges only  (zero DOM lag)
+Every 1 sec  →  Flush monitor, render table, update charts  (batched)
+
+Project Structure :
+smartcan-pro/
+└── index.html      ← Entire application (single file)
+
+Arduino Sketches :
+
+ECU 1 — Sender (MCP2515) :
+
+#include <SPI.h>
+#include <mcp2515.h>
+
+// CAN Configuration
+struct can_frame canMsg;
+MCP2515 mcp2515(10); // CS pin connected to D10
+
+// Simulation variables
+uint16_t rpm = 0;
+uint8_t speed = 0;
+int8_t temperature = 0;
+uint8_t fuelLevel = 100;
+uint16_t voltage = 0;
+
+// Timing variables
+unsigned long lastTransmitTime = 0;
+const unsigned long TRANSMIT_INTERVAL = 100; // 100ms between messages
+
+void setup() {
+  Serial.begin(115200);
+  SPI.begin();
+  
+  // Initialize MCP2515
+  mcp2515.reset();
+  
+  // CRITICAL: Ensure MCP_8MHZ matches the crystal on your CAN module. 
+  // If your module has a 16MHz crystal, change this to MCP_16MHZ.
+  mcp2515.setBitrate(CAN_500KBPS, MCP_8MHZ); 
+  mcp2515.setNormalMode();
+  
+  Serial.println("ECU-1: Vehicle Sensor Transmitter Started");
+  Serial.println("Transmitting: RPM, Speed, Temperature, Fuel Level, Voltage");
+  Serial.println("----------------------------------------");
+  
+  randomSeed(analogRead(0));
+}
+
+void loop() {
+  unsigned long currentTime = millis();
+  
+  // Send CAN messages at defined intervals
+  if (currentTime - lastTransmitTime >= TRANSMIT_INTERVAL) {
+    lastTransmitTime = currentTime;
+    
+    updateSensorValues();
+    
+    sendRPMData();
+    delay(10); // Small delay to prevent bus flooding
+    sendSpeedData();
+    delay(10);
+    sendTemperatureData();
+    delay(10);
+    sendFuelData();
+    delay(10);
+    sendVoltageData();
+    delay(10);
+  }
+}
+
+void updateSensorValues() {
+  rpm = random(800, 6500);              
+  speed = random(0, 180);                
+  temperature = random(60, 105);         
+  fuelLevel = constrain(fuelLevel + random(-2, 1), 0, 100); 
+  voltage = random(120, 148);            
+}
+
+void sendRPMData() {
+  canMsg.can_id = 0x100;  
+  canMsg.can_dlc = 8;
+  canMsg.data[0] = highByte(rpm);
+  canMsg.data[1] = lowByte(rpm);
+  for(int i=2; i<8; i++) canMsg.data[i] = 0x00;
+  
+  if (mcp2515.sendMessage(&canMsg) == MCP2515::ERROR_OK) {
+    Serial.print("TX [0x100] RPM: "); Serial.println(rpm);
+  } else {
+    Serial.println("TX ERROR: RPM message failed");
+  }
+}
+
+void sendSpeedData() {
+  canMsg.can_id = 0x200;  
+  canMsg.can_dlc = 8;
+  canMsg.data[0] = speed;
+  for(int i=1; i<8; i++) canMsg.data[i] = 0x00;
+  
+  if (mcp2515.sendMessage(&canMsg) == MCP2515::ERROR_OK) {
+    Serial.print("TX [0x200] Speed: "); Serial.println(speed);
+  }
+}
+
+void sendTemperatureData() {
+  canMsg.can_id = 0x300;  
+  canMsg.can_dlc = 8;
+  canMsg.data[0] = temperature;
+  for(int i=1; i<8; i++) canMsg.data[i] = 0x00;
+  
+  if (mcp2515.sendMessage(&canMsg) == MCP2515::ERROR_OK) {
+    Serial.print("TX [0x300] Temp: "); Serial.println(temperature);
+  }
+}
+
+void sendFuelData() {
+  canMsg.can_id = 0x400;  
+  canMsg.can_dlc = 8;
+  canMsg.data[0] = fuelLevel;
+  for(int i=1; i<8; i++) canMsg.data[i] = 0x00;
+  
+  if (mcp2515.sendMessage(&canMsg) == MCP2515::ERROR_OK) {
+    Serial.print("TX [0x400] Fuel: "); Serial.println(fuelLevel);
+  }
+}
+
+void sendVoltageData() {
+  canMsg.can_id = 0x500;  
+  canMsg.can_dlc = 8;
+  canMsg.data[0] = highByte(voltage);
+  canMsg.data[1] = lowByte(voltage);
+  for(int i=2; i<8; i++) canMsg.data[i] = 0x00;
+  
+  if (mcp2515.sendMessage(&canMsg) == MCP2515::ERROR_OK) {
+    Serial.print("TX [0x500] Volts: "); Serial.println(voltage / 10.0, 1);
+    Serial.println("----------------------------------------");
+  }
+}
+
+ECU 2 — Receiver (MCP2515) :
+
+#include <SPI.h>
+#include <mcp2515.h>
+
+// CAN Configuration
+struct can_frame canMsg;
+MCP2515 mcp2515(10); // CS pin connected to D10
+
+// Storage for latest sensor values
+uint16_t latestRPM = 0;
+uint8_t latestSpeed = 0;
+int8_t latestTemperature = 0;
+uint8_t latestFuelLevel = 0;
+float latestVoltage = 0.0;
+
+// Timing for display updates
+unsigned long lastDisplayTime = 0;
+const unsigned long DISPLAY_INTERVAL = 500; 
+
+// Message counters
+unsigned long totalMessagesReceived = 0;
+unsigned long rpmCount = 0, speedCount = 0, tempCount = 0;
+unsigned long fuelCount = 0, voltageCount = 0, errorCount = 0;
+
+void setup() {
+  Serial.begin(115200);
+  SPI.begin();
+  
+  mcp2515.reset();
+  // CRITICAL: Bitrate and Clock MUST match the transmitter perfectly.
+  mcp2515.setBitrate(CAN_500KBPS, MCP_8MHZ); 
+  mcp2515.setNormalMode();
+  
+  Serial.println("╔════════════════════════════════════════════╗");
+  Serial.println("║   ECU-2: Vehicle Display Unit Started      ║");
+  Serial.println("║   Receiving Vehicle Sensor Data            ║");
+  Serial.println("╚════════════════════════════════════════════╝");
+  delay(1000);
+}
+
+void loop() {
+  // Continuously poll for CAN messages
+  if (mcp2515.readMessage(&canMsg) == MCP2515::ERROR_OK) {
+    totalMessagesReceived++;
+    processCANMessage();
+  }
+  
+  // Display dashboard periodically
+  unsigned long currentTime = millis();
+  if (currentTime - lastDisplayTime >= DISPLAY_INTERVAL) {
+    lastDisplayTime = currentTime;
+    displayDashboard();
+  }
+}
+
+void processCANMessage() {
+  switch (canMsg.can_id) {
+    case 0x100:
+      if (canMsg.can_dlc >= 2) {
+        latestRPM = (canMsg.data[0] << 8) | canMsg.data[1];
+        rpmCount++;
+      }
+      break;
+    case 0x200:
+      if (canMsg.can_dlc >= 1) {
+        latestSpeed = canMsg.data[0];
+        speedCount++;
+      }
+      break;
+    case 0x300:
+      if (canMsg.can_dlc >= 1) {
+        latestTemperature = canMsg.data[0];
+        tempCount++;
+      }
+      break;
+    case 0x400:
+      if (canMsg.can_dlc >= 1) {
+        latestFuelLevel = canMsg.data[0];
+        fuelCount++;
+      }
+      break;
+    case 0x500:
+      if (canMsg.can_dlc >= 2) {
+        uint16_t voltageRaw = (canMsg.data[0] << 8) | canMsg.data[1];
+        latestVoltage = voltageRaw / 10.0;
+        voltageCount++;
+      }
+      break;
+    default:
+      errorCount++;
+      break;
+  }
+}
+
+void displayDashboard() {
+  Serial.println("\n╔════════════════════════════════════════════╗");
+  Serial.println("║          VEHICLE DASHBOARD                 ║");
+  Serial.println("╠════════════════════════════════════════════╣");
+  
+  Serial.print("║ RPM:          "); printPaddedValue(latestRPM, 5); Serial.print(" RPM"); printRPMBar(latestRPM); Serial.println("║");
+  Serial.print("║ Speed:        "); printPaddedValue(latestSpeed, 5); Serial.print(" km/h"); printSpeedBar(latestSpeed); Serial.println("║");
+  Serial.print("║ Engine Temp:  "); printPaddedValue(latestTemperature, 5); Serial.print(" °C "); printTempStatus(latestTemperature); Serial.println(" ║");
+  Serial.print("║ Fuel Level:   "); printPaddedValue(latestFuelLevel, 5); Serial.print(" %  "); printFuelBar(latestFuelLevel); Serial.println("║");
+  Serial.print("║ Battery:      "); Serial.print(latestVoltage, 1); Serial.print(" V   "); printBatteryStatus(latestVoltage); Serial.println("   ║");
+  
+  Serial.println("╠════════════════════════════════════════════╣");
+  Serial.println("║          MESSAGE STATISTICS                ║");
+  Serial.println("╠════════════════════════════════════════════╣");
+  Serial.print("║ Total Messages: "); Serial.print(totalMessagesReceived); Serial.println("                        ║");
+  Serial.print("║ RPM: "); Serial.print(rpmCount); Serial.print(" | Speed: "); Serial.print(speedCount); Serial.print(" | Temp: "); Serial.print(tempCount); Serial.println("       ║");
+  Serial.println("╚════════════════════════════════════════════╝\n");
+}
+
+void printPaddedValue(int value, int width) {
+  int numDigits = value == 0 ? 1 : log10(abs(value)) + 1;
+  for (int i = 0; i < (width - numDigits); i++) Serial.print(" ");
+  Serial.print(value);
+}
+
+void printRPMBar(uint16_t rpm) {
+  Serial.print(" [");
+  int bars = map(rpm, 0, 7000, 0, 5);
+  for (int i = 0; i < 5; i++) Serial.print(i < bars ? "█" : " ");
+  Serial.print("]");
+}
+
+void printSpeedBar(uint8_t speed) {
+  Serial.print(" [");
+  int bars = map(speed, 0, 180, 0, 5);
+  for (int i = 0; i < 5; i++) Serial.print(i < bars ? "█" : " ");
+  Serial.print("]");
+}
+
+void printTempStatus(int8_t temp) {
+  if (temp < 70) Serial.print("COLD");
+  else if (temp < 90) Serial.print("OK  ");
+  else if (temp < 100) Serial.print("WARM");
+  else Serial.print("HOT!");
+}
+
+void printFuelBar(uint8_t fuel) {
+  Serial.print("[");
+  int bars = map(fuel, 0, 100, 0, 5);
+  for (int i = 0; i < 5; i++) Serial.print(i < bars ? "█" : " ");
+  Serial.print("]");
+}
+
+void printBatteryStatus(float voltage) {
+  if (voltage < 12.0) Serial.print("LOW ");
+  else if (voltage < 12.5) Serial.print("OK  ");
+  else if (voltage < 14.5) Serial.print("GOOD");
+  else Serial.print("HIGH");
+}
+
+Author :
+Developed by Yuvraj Satpute for Avinyathon 2025
+Industrial CAN Debugging & Automated Reporting System
+
+Keywords
+can-bus arduino mcp2515 automotive ecu obd2 serial-monitor web-serial-api real-time dashboard javascript chart.js pdf-report avinyathon embedded-systems vehicle-diagnostics
